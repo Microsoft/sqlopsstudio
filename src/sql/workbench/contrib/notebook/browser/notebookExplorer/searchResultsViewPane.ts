@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { SearchView, SearchUIState } from 'vs/workbench/contrib/search/browser/searchView';
-import { IViewPaneOptions, ViewPane } from 'vs/workbench/browser/parts/views/viewPaneContainer';
+import { IViewPaneOptions, ViewPane, ViewPaneContainer } from 'vs/workbench/browser/parts/views/viewPaneContainer';
 import { IFileService } from 'vs/platform/files/common/files';
 import { IEditorService } from 'vs/workbench/services/editor/common/editorService';
 import { IProgressService } from 'vs/platform/progress/common/progress';
@@ -32,21 +32,25 @@ import { IOpenerService } from 'vs/platform/opener/common/opener';
 import * as dom from 'vs/base/browser/dom';
 import { IDisposable, dispose } from 'vs/base/common/lifecycle';
 import * as nls from 'vs/nls';
-import { ISearchComplete, SearchCompletionExitCode, ITextQuery, SearchSortOrder, ISearchConfigurationProperties } from 'vs/workbench/services/search/common/search';
+import { ISearchComplete, SearchCompletionExitCode, ITextQuery, SearchSortOrder, ISearchConfigurationProperties, IFolderQuery } from 'vs/workbench/services/search/common/search';
 import { MessageType } from 'vs/base/browser/ui/inputbox/inputBox';
 import * as aria from 'vs/base/browser/ui/aria/aria';
 import * as errors from 'vs/base/common/errors';
-import { NotebookSearchWidget } from 'sql/workbench/contrib/notebook/browser/notebookExplorer/notebookSearchWidget';
 import { ITreeElement, ITreeContextMenuEvent } from 'vs/base/browser/ui/tree/tree';
 import { Iterable } from 'vs/base/common/iterator';
 import { searchClearIcon, searchCollapseAllIcon, searchExpandAllIcon, searchStopIcon } from 'vs/workbench/contrib/search/browser/searchIcons';
 import { Action, IAction } from 'vs/base/common/actions';
 import { createAndFillInContextMenuActions } from 'vs/platform/actions/browser/menuEntryActionViewItem';
 import { Memento } from 'vs/workbench/common/memento';
+import { TreeViewPane } from 'sql/workbench/browser/parts/views/treeView';
+import { URI } from 'vs/base/common/uri';
+import * as path from 'vs/base/common/path';
+import { SimpleSearchWidget, ISearchResultsView } from 'sql/workbench/contrib/searchViewPane/browser/searchWidget/simpleSearchWidget';
+import { isString } from 'vs/base/common/types';
 
 const $ = dom.$;
 
-export class NotebookSearchView extends SearchView {
+export class NotebookSearchResultsView extends SearchView implements ISearchResultsView {
 	static readonly ID = 'notebookExplorer.searchResults';
 
 	private treeSelectionChangeListener: IDisposable;
@@ -54,6 +58,8 @@ export class NotebookSearchView extends SearchView {
 	private viewActions: Array<CollapseDeepestExpandedLevelAction | ClearSearchResultsAction> = [];
 	private cancelSearchAction: CancelSearchAction;
 	private toggleExpandAction: ToggleCollapseAndExpandAction;
+	public searchResultsViewID?: string;
+	private parentContainer: ViewPaneContainer;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -105,6 +111,10 @@ export class NotebookSearchView extends SearchView {
 
 	get searchViewModel(): SearchModel {
 		return this.viewModel;
+	}
+
+	set parent(parent: ViewPaneContainer) {
+		this.parentContainer = parent;
 	}
 
 	hasSearchPattern(): boolean {
@@ -176,12 +186,6 @@ export class NotebookSearchView extends SearchView {
 		this.tree.layout(searchResultContainerHeight, this.size.width);
 	}
 
-	public onDidNotebooksOpenState(): void {
-		if (this.contextKeyService.getContextKeyValue('bookOpened') && this.searchWithoutFolderMessageElement) {
-			dom.hide(this.searchWithoutFolderMessageElement);
-		}
-	}
-
 	renderBody(parent: HTMLElement): void {
 		super.callRenderBody(parent);
 
@@ -237,7 +241,53 @@ export class NotebookSearchView extends SearchView {
 		}));
 	}
 
-	public startSearch(query: ITextQuery, excludePatternText: string, includePatternText: string, triggeredOnType: boolean, searchWidget: NotebookSearchWidget): Thenable<void> {
+	public async validateAndSearch(query: ITextQuery, searchWidget: SimpleSearchWidget): Promise<void> {
+		try {
+			await this.validateQuery(query);
+			if (this.parentContainer.views.length > 1) {
+				let filesToIncludeFiltered: string = '';
+				this.parentContainer.views.forEach(async (v) => {
+					let booksViewPane = (<TreeViewPane>this.parentContainer.getView(v.id));
+					if (booksViewPane?.treeView?.root) {
+						booksViewPane.treeView.root.children?.forEach(async root => {
+							searchWidget.updateViewletsState();
+							let folderToSearch: IFolderQuery = { folder: URI.file(path.join(isString(root.tooltip) ? root.tooltip : root.tooltip.value, 'content')) };
+							query.folderQueries.push(folderToSearch);
+							filesToIncludeFiltered = filesToIncludeFiltered + path.join(folderToSearch.folder.fsPath, '**', '*.md') + ',' + path.join(folderToSearch.folder.fsPath, '**', '*.ipynb') + ',';
+							await this.startSearch(query, null, filesToIncludeFiltered, false, searchWidget);
+						});
+					}
+				});
+			}
+		} catch (e) {
+			errors.onUnexpectedError(e);
+		}
+	}
+
+	protected async validateQuery(query: ITextQuery): Promise<void> {
+		// Validate folders passed in the query exist.
+		const folderQueriesExistP =
+			query.folderQueries.map(fq => {
+				return this.fileService.exists(fq.folder);
+			});
+
+		await Promise.all(folderQueriesExistP);
+		folderQueriesExistP.forEach((existResults, i) => {
+			// If no folders exist, show an error message about the first one
+			const existingFolderQueries = query.folderQueries.filter((folderQuery, j) => i === j && existResults);
+			if (!query.folderQueries.length || existingFolderQueries.length) {
+				query.folderQueries = existingFolderQueries;
+			} else {
+				const nonExistantPath = query.folderQueries[0].folder.fsPath;
+				const searchPathNotFoundError = nls.localize('searchPathNotFoundError', "Search path not found: {0}", nonExistantPath);
+				throw new Error(searchPathNotFoundError);
+			}
+			return undefined;
+		});
+	}
+
+
+	public startSearch(query: ITextQuery, excludePatternText: string, includePatternText: string, triggeredOnType: boolean, searchWidget: SimpleSearchWidget): Promise<void> {
 		let progressComplete: () => void;
 		this.progressService.withProgress({ location: this.getProgressLocation(), delay: triggeredOnType ? 300 : 0 }, _progress => {
 			return new Promise(resolve => progressComplete = resolve);
@@ -463,7 +513,7 @@ export class NotebookSearchView extends SearchView {
 				this.createSearchFileIterator(match);
 	}
 
-	triggerSearchQueryChange(query: ITextQuery, excludePatternText: string, includePatternText: string, triggeredOnType: boolean, searchWidget: NotebookSearchWidget) {
+	triggerSearchQueryChange(query: ITextQuery, excludePatternText: string, includePatternText: string, triggeredOnType: boolean, searchWidget: SimpleSearchWidget) {
 		this.viewModel.cancelSearch(true);
 
 		this.currentSearchQ = this.currentSearchQ
@@ -489,7 +539,7 @@ export class NotebookSearchView extends SearchView {
 }
 
 class ToggleCollapseAndExpandAction extends Action {
-	static readonly ID: string = 'notebookSearch.action.collapseOrExpandSearchResults';
+	static readonly ID: string = 'searchResults.action.collapseOrExpandSearchResults';
 	static LABEL: string = nls.localize('ToggleCollapseAndExpandAction.label', "Toggle Collapse and Expand");
 
 	// Cache to keep from crawling the tree too often.
@@ -545,7 +595,7 @@ class ToggleCollapseAndExpandAction extends Action {
 
 class CancelSearchAction extends Action {
 
-	static readonly ID: string = 'notebookSearch.action.cancelSearch';
+	static readonly ID: string = 'searchResults.action.cancelSearch';
 	static LABEL: string = nls.localize('CancelSearchAction.label', "Cancel Search");
 
 	constructor(id: string, label: string,
@@ -572,7 +622,7 @@ class CancelSearchAction extends Action {
 
 class ExpandAllAction extends Action {
 
-	static readonly ID: string = 'notebookSearch.action.expandSearchResults';
+	static readonly ID: string = 'searchResults.action.expandSearchResults';
 	static LABEL: string = nls.localize('ExpandAllAction.label', "Expand All");
 
 	constructor(id: string, label: string,
@@ -601,7 +651,7 @@ class ExpandAllAction extends Action {
 
 class CollapseDeepestExpandedLevelAction extends Action {
 
-	static readonly ID: string = 'notebookSearch.action.collapseSearchResults';
+	static readonly ID: string = 'searchResults.action.collapseSearchResults';
 	static LABEL: string = nls.localize('CollapseDeepestExpandedLevelAction.label', "Collapse All");
 
 	constructor(id: string, label: string,
@@ -657,7 +707,7 @@ class CollapseDeepestExpandedLevelAction extends Action {
 
 class ClearSearchResultsAction extends Action {
 
-	static readonly ID: string = 'notebookSearch.action.clearSearchResults';
+	static readonly ID: string = 'searchResults.action.clearSearchResults';
 	static LABEL: string = nls.localize('ClearSearchResultsAction.label', "Clear Search Results");
 
 	constructor(id: string, label: string,
@@ -681,6 +731,6 @@ class ClearSearchResultsAction extends Action {
 	}
 }
 
-function getSearchView(viewsService: IViewsService): NotebookSearchView | undefined {
-	return viewsService.getActiveViewWithId(NotebookSearchView.ID) as NotebookSearchView ?? undefined;
+function getSearchView(viewsService: IViewsService): NotebookSearchResultsView | undefined {
+	return viewsService.getActiveViewWithId(NotebookSearchResultsView.ID) as NotebookSearchResultsView ?? undefined;
 }
