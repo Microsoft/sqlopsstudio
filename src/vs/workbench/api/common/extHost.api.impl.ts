@@ -61,7 +61,7 @@ import { getRemoteName } from 'vs/platform/remote/common/remoteHosts';
 import { ServicesAccessor } from 'vs/platform/instantiation/common/instantiation';
 import { IExtHostDecorations } from 'vs/workbench/api/common/extHostDecorations';
 import { IExtHostTask } from 'vs/workbench/api/common/extHostTask';
-// import { IExtHostDebugService } from 'vs/workbench/api/common/extHostDebugService';
+import { IExtHostDebugService } from 'vs/workbench/api/common/extHostDebugService';
 import { IExtHostSearch } from 'vs/workbench/api/common/extHostSearch';
 import { ILogService } from 'vs/platform/log/common/log';
 import { IURITransformerService } from 'vs/workbench/api/common/extHostUriTransformerService';
@@ -73,7 +73,8 @@ import { IExtHostTunnelService } from 'vs/workbench/api/common/extHostTunnelServ
 import { IExtHostApiDeprecationService } from 'vs/workbench/api/common/extHostApiDeprecationService';
 import { ExtHostAuthentication } from 'vs/workbench/api/common/extHostAuthentication';
 import { ExtHostTimeline } from 'vs/workbench/api/common/extHostTimeline';
-import { ExtHostNotebookConcatDocument } from 'vs/workbench/api/common/extHostNotebookConcatDocument';
+// {{SQL CARBON EDIT }} Comment out the import to remove compilation warning
+// import { ExtHostNotebookConcatDocument } from 'vs/workbench/api/common/extHostNotebookConcatDocument';
 import { IExtensionStoragePaths } from 'vs/workbench/api/common/extHostStoragePaths';
 import { IExtHostConsumerFileSystem } from 'vs/workbench/api/common/extHostFileSystemConsumer';
 import { ExtHostWebviewViews } from 'vs/workbench/api/common/extHostWebviewView';
@@ -128,7 +129,7 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 	const extHostDocumentsAndEditors = rpcProtocol.set(ExtHostContext.ExtHostDocumentsAndEditors, accessor.get(IExtHostDocumentsAndEditors));
 	const extHostCommands = rpcProtocol.set(ExtHostContext.ExtHostCommands, accessor.get(IExtHostCommands));
 	const extHostTerminalService = rpcProtocol.set(ExtHostContext.ExtHostTerminalService, accessor.get(IExtHostTerminalService));
-	// const extHostDebugService = rpcProtocol.set(ExtHostContext.ExtHostDebugService, accessor.get(IExtHostDebugService)); {{SQL CARBON EDIT}} remove debug service
+	const extHostDebugService = rpcProtocol.set(ExtHostContext.ExtHostDebugService, accessor.get(IExtHostDebugService));
 	const extHostSearch = rpcProtocol.set(ExtHostContext.ExtHostSearch, accessor.get(IExtHostSearch));
 	const extHostTask = rpcProtocol.set(ExtHostContext.ExtHostTask, accessor.get(IExtHostTask));
 	const extHostOutputService = rpcProtocol.set(ExtHostContext.ExtHostOutputService, accessor.get(IExtHostOutputService));
@@ -163,10 +164,7 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 	const extHostUriOpeners = rpcProtocol.set(ExtHostContext.ExtHostUriOpeners, new ExtHostUriOpeners(rpcProtocol));
 
 	// Check that no named customers are missing
-	// {{SQL CARBON EDIT}} filter out the services we don't expose
-	const filtered: ProxyIdentifier<any>[] = [ExtHostContext.ExtHostDebugService];
-	const expected: ProxyIdentifier<any>[] = values(ExtHostContext).filter(v => !filtered.find(x => x === v));
-
+	const expected: ProxyIdentifier<any>[] = values(ExtHostContext);
 	rpcProtocol.assertRegistered(expected);
 
 	// Other instances
@@ -916,68 +914,55 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 		// namespace: debug
 		const debug: typeof vscode.debug = {
 			get activeDebugSession() {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.activeDebugSession;
 			},
 			get activeDebugConsole() {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.activeDebugConsole;
 			},
 			get breakpoints() {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return [];
+				return extHostDebugService.breakpoints;
 			},
 			onDidStartDebugSession(listener, thisArg?, disposables?) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.onDidStartDebugSession(listener, thisArg, disposables);
 			},
 			onDidTerminateDebugSession(listener, thisArg?, disposables?) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.onDidTerminateDebugSession(listener, thisArg, disposables);
 			},
 			onDidChangeActiveDebugSession(listener, thisArg?, disposables?) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.onDidChangeActiveDebugSession(listener, thisArg, disposables);
 			},
 			onDidReceiveDebugSessionCustomEvent(listener, thisArg?, disposables?) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.onDidReceiveDebugSessionCustomEvent(listener, thisArg, disposables);
 			},
 			onDidChangeBreakpoints(listener, thisArgs?, disposables?) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.onDidChangeBreakpoints(listener, thisArgs, disposables);
 			},
 			registerDebugConfigurationProvider(debugType: string, provider: vscode.DebugConfigurationProvider, triggerKind?: vscode.DebugConfigurationProviderTriggerKind) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.registerDebugConfigurationProvider(debugType, provider, triggerKind || extHostTypes.DebugConfigurationProviderTriggerKind.Initial);
 			},
 			registerDebugAdapterDescriptorFactory(debugType: string, factory: vscode.DebugAdapterDescriptorFactory) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.registerDebugAdapterDescriptorFactory(extension, debugType, factory);
 			},
 			registerDebugAdapterTrackerFactory(debugType: string, factory: vscode.DebugAdapterTrackerFactory) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.registerDebugAdapterTrackerFactory(debugType, factory);
 			},
 			startDebugging(folder: vscode.WorkspaceFolder | undefined, nameOrConfig: string | vscode.DebugConfiguration, parentSessionOrOptions?: vscode.DebugSession | vscode.DebugSessionOptions) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				if (!parentSessionOrOptions || (typeof parentSessionOrOptions === 'object' && 'configuration' in parentSessionOrOptions)) {
+					return extHostDebugService.startDebugging(folder, nameOrConfig, { parentSession: parentSessionOrOptions } as vscode.DebugSessionOptions);
+				}
+				return extHostDebugService.startDebugging(folder, nameOrConfig, parentSessionOrOptions || {});
 			},
 			stopDebugging(session?: vscode.DebugSession) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.stopDebugging(session);
 			},
 			addBreakpoints(breakpoints: vscode.Breakpoint[]) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.addBreakpoints(breakpoints);
 			},
 			removeBreakpoints(breakpoints: vscode.Breakpoint[]) {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.removeBreakpoints(breakpoints);
 			},
 			asDebugSourceUri(source: vscode.DebugProtocolSource, session?: vscode.DebugSession): vscode.Uri {
-				extHostLogService.warn('Debug API is disabled in Azure Data Studio');
-				return undefined!;
+				return extHostDebugService.asDebugSourceUri(source, session);
 			}
 		};
 
@@ -1009,6 +994,7 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 		};
 
 		// namespace: notebook
+		// {{SQL CARBON EDIT}} Switch off notebooks API
 		const notebook: (typeof vscode.notebook & {
 			// to ensure that notebook extensions not break before they update APIs.
 			visibleNotebookEditors: vscode.NotebookEditor[];
@@ -1019,95 +1005,139 @@ export function createApiFactoryAndRegisterActors(accessor: ServicesAccessor): I
 			onDidChangeNotebookEditorVisibleRanges: Event<vscode.NotebookEditorVisibleRangesChangeEvent>;
 		}) = {
 			openNotebookDocument: (uriComponents, viewType) => {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.openNotebookDocument(uriComponents, viewType);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.openNotebookDocument(uriComponents, viewType);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get onDidOpenNotebookDocument(): Event<vscode.NotebookDocument> {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidOpenNotebookDocument;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidOpenNotebookDocument;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get onDidCloseNotebookDocument(): Event<vscode.NotebookDocument> {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidCloseNotebookDocument;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidCloseNotebookDocument;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get onDidSaveNotebookDocument(): Event<vscode.NotebookDocument> {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidSaveNotebookDocument;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidSaveNotebookDocument;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get notebookDocuments(): vscode.NotebookDocument[] {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.notebookDocuments.map(d => d.notebookDocument);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.notebookDocuments.map(d => d.notebookDocument);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get visibleNotebookEditors(): vscode.NotebookEditor[] {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.visibleNotebookEditors;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.visibleNotebookEditors;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get onDidChangeVisibleNotebookEditors() {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeVisibleNotebookEditors;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeVisibleNotebookEditors;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get onDidChangeActiveNotebookKernel() {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeActiveNotebookKernel;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeActiveNotebookKernel;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			registerNotebookContentProvider: (viewType: string, provider: vscode.NotebookContentProvider, options?: {
 				transientOutputs: boolean;
 				transientMetadata: { [K in keyof vscode.NotebookCellMetadata]?: boolean }
 			}) => {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.registerNotebookContentProvider(extension, viewType, provider, options);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.registerNotebookContentProvider(extension, viewType, provider, options);
 			},
 			registerNotebookKernelProvider: (selector: vscode.NotebookDocumentFilter, provider: vscode.NotebookKernelProvider) => {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.registerNotebookKernelProvider(extension, selector, provider);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.registerNotebookKernelProvider(extension, selector, provider);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			createNotebookEditorDecorationType(options: vscode.NotebookDecorationRenderOptions): vscode.NotebookEditorDecorationType {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.createNotebookEditorDecorationType(options);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.createNotebookEditorDecorationType(options);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			get activeNotebookEditor(): vscode.NotebookEditor | undefined {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.activeNotebookEditor;
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.activeNotebookEditor;
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeActiveNotebookEditor(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeActiveNotebookEditor(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeActiveNotebookEditor(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeNotebookDocumentMetadata(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeNotebookDocumentMetadata(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeNotebookDocumentMetadata(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeNotebookCells(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeNotebookCells(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeNotebookCells(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeNotebookEditorSelection(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeNotebookEditorSelection(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeNotebookEditorSelection(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeNotebookEditorVisibleRanges(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeNotebookEditorVisibleRanges(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeNotebookEditorVisibleRanges(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeCellOutputs(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeCellOutputs(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeCellOutputs(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeCellLanguage(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeCellLanguage(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeCellLanguage(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			onDidChangeCellMetadata(listener, thisArgs?, disposables?) {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.onDidChangeCellMetadata(listener, thisArgs, disposables);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.onDidChangeCellMetadata(listener, thisArgs, disposables);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			createConcatTextDocument(notebook, selector) {
-				checkProposedApiEnabled(extension);
-				return new ExtHostNotebookConcatDocument(extHostNotebook, extHostDocuments, notebook, selector);
+				// checkProposedApiEnabled(extension);
+				// return new ExtHostNotebookConcatDocument(extHostNotebook, extHostDocuments, notebook, selector);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			},
 			createCellStatusBarItem(cell: vscode.NotebookCell, alignment?: vscode.NotebookCellStatusBarAlignment, priority?: number): vscode.NotebookCellStatusBarItem {
-				checkProposedApiEnabled(extension);
-				return extHostNotebook.createNotebookCellStatusBarItemInternal(cell, alignment, priority);
+				// checkProposedApiEnabled(extension);
+				// return extHostNotebook.createNotebookCellStatusBarItemInternal(cell, alignment, priority);
+				extHostLogService.warn('Jupyter Notebooks Extension is disabled in Azure Data Studio');
+				return undefined!;
 			}
 		};
 
