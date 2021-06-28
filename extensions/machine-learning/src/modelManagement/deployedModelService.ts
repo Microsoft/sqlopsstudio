@@ -6,15 +6,13 @@
 import * as azdata from 'azdata';
 
 import { ApiWrapper } from '../common/apiWrapper';
-import * as utils from '../common/utils';
 import { Config } from '../configurations/config';
-import { QueryRunner } from '../common/queryRunner';
 import { ImportedModel, ImportedModelDetails, ModelParameters } from './interfaces';
 import { ModelPythonClient } from './modelPythonClient';
 import * as constants from '../common/constants';
-import * as queries from './queries';
 import { DatabaseTable } from '../prediction/interfaces';
 import { ModelConfigRecent } from './modelConfigRecent';
+import * as mssql from '../../../mssql';
 
 /**
  * Service to deployed models
@@ -27,9 +25,9 @@ export class DeployedModelService {
 	constructor(
 		private _apiWrapper: ApiWrapper,
 		private _config: Config,
-		private _queryRunner: QueryRunner,
 		private _modelClient: ModelPythonClient,
-		private _recentModelService: ModelConfigRecent) {
+		private _recentModelService: ModelConfigRecent,
+		private _modelManagementService: mssql.IModelManagementService) {
 	}
 
 	/**
@@ -38,17 +36,13 @@ export class DeployedModelService {
 	public async getDeployedModels(table: DatabaseTable): Promise<ImportedModel[]> {
 		let connection = await this.getCurrentConnection();
 		let list: ImportedModel[] = [];
-		if (!table.databaseName || !table.tableName || !table.schema) {
+		if (!table.databaseName || !table.tableName || !table.schemaName) {
 			return [];
 		}
 		if (connection) {
-			const query = queries.getDeployedModelsQuery(table);
-			let result = await this._queryRunner.safeRunQuery(connection, query);
-			if (result && result.rows && result.rows.length > 0) {
-				result.rows.forEach(row => {
-					list.push(this.loadModelData(row, table));
-				});
-			}
+			let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+			let models = await this._modelManagementService.getModels(connectionUri, table);
+			list = (await models).map(x => Object.assign({}, x, { table: table }));
 		} else {
 			throw Error(constants.noConnectionError);
 		}
@@ -63,20 +57,10 @@ export class DeployedModelService {
 		let connection = await this.getCurrentConnection();
 		let fileContent: string = '';
 		if (connection) {
-			const query = queries.getModelContentQuery(model);
-			let result = await this._queryRunner.safeRunQuery(connection, query);
-			if (result && result.rows && result.rows.length > 0) {
-				for (let index = 0; index < result.rows[0].length; index++) {
-					const column = result.rows[0][index];
-					let content = column.displayValue;
-					content = content.startsWith('0x') || content.startsWith('0X') ? content.substr(2) : content;
-					fileContent = fileContent + content;
-				}
 
-				return await utils.writeFileFromHex(fileContent);
-			} else {
-				throw Error(constants.invalidModelToSelectError);
-			}
+			let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+			fileContent = await this._modelManagementService.downloadModel(connectionUri, model.table, model.id);
+			return fileContent;
 		} else {
 			throw Error(constants.noConnectionError);
 		}
@@ -97,21 +81,14 @@ export class DeployedModelService {
 	public async deployLocalModel(filePath: string, details: ImportedModelDetails | undefined, table: DatabaseTable) {
 		let connection = await this.getCurrentConnection();
 		if (connection && table.databaseName) {
-
-			await this.configureImport(connection, table);
-			let currentModels = await this.getDeployedModels(table);
-			const content = await utils.readFileInHex(filePath);
-			let modelToAdd: ImportedModel = Object.assign({}, {
+			let modelToAdd: mssql.ModelMetadata = Object.assign({}, details, {
 				id: 0,
-				content: content,
+				filePath: filePath,
 				table: table
-			}, details);
-			await this._queryRunner.runWithDatabaseChange(connection, queries.getInsertModelQuery(modelToAdd, table), table.databaseName);
-
-			let updatedModels = await this.getDeployedModels(table);
-			if (updatedModels.length < currentModels.length + 1) {
-				throw Error(constants.importModelFailedError(details?.modelName, filePath));
-			}
+			});
+			let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+			await this._modelManagementService.configureModelTable(connectionUri, table);
+			await this._modelManagementService.importModel(connectionUri, table, modelToAdd);
 
 		} else {
 			throw new Error(constants.noConnectionError);
@@ -124,7 +101,9 @@ export class DeployedModelService {
 	public async updateModel(model: ImportedModel) {
 		let connection = await this.getCurrentConnection();
 		if (connection && model && model.table && model.table.databaseName) {
-			await this._queryRunner.runWithDatabaseChange(connection, queries.getUpdateModelQuery(model), model.table.databaseName);
+			let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+			await this._modelManagementService.updateModel(connectionUri, model.table, model);
+			//await this._queryRunner.runWithDatabaseChange(connection, queries.getUpdateModelQuery(model), model.table.databaseName);
 		} else {
 			throw new Error(constants.noConnectionError);
 		}
@@ -136,19 +115,10 @@ export class DeployedModelService {
 	public async deleteModel(model: ImportedModel) {
 		let connection = await this.getCurrentConnection();
 		if (connection && model && model.table && model.table.databaseName) {
-			await this._queryRunner.runWithDatabaseChange(connection, queries.getDeleteModelQuery(model), model.table.databaseName);
+			let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+			await this._modelManagementService.deleteModel(connectionUri, model.table, model.id);
 		} else {
 			throw new Error(constants.noConnectionError);
-		}
-	}
-
-	public async configureImport(connection: azdata.connection.ConnectionProfile, table: DatabaseTable) {
-		if (connection && table.databaseName) {
-			let query = queries.getDatabaseConfigureQuery(table);
-			await this._queryRunner.safeRunQuery(connection, query);
-
-			query = queries.getConfigureTableQuery(table);
-			await this._queryRunner.runWithDatabaseChange(connection, query, table.databaseName);
 		}
 	}
 
@@ -166,9 +136,9 @@ export class DeployedModelService {
 			// If database exist verify the table schema
 			//
 			if ((await databases).find(x => x === table.databaseName)) {
-				const query = queries.getConfigTableVerificationQuery(table);
-				const result = await this._queryRunner.runWithDatabaseChange(connection, query, table.databaseName);
-				return result !== undefined && result.rows.length > 0 && result.rows[0][0].displayValue === '1';
+
+				let connectionUri = await this._apiWrapper.getUriForConnection(connection.connectionId);
+				return await this._modelManagementService.verifyModelTable(connectionUri, table);
 			} else {
 				return true;
 			}
@@ -193,7 +163,7 @@ export class DeployedModelService {
 				table = {
 					databaseName: connection.databaseName ?? 'master',
 					tableName: this._config.registeredModelTableName,
-					schema: this._config.registeredModelTableSchemaName
+					schemaName: this._config.registeredModelTableSchemaName
 				};
 			}
 		} else {
@@ -209,23 +179,6 @@ export class DeployedModelService {
 		} else {
 			throw new Error(constants.noConnectionError);
 		}
-	}
-
-	private loadModelData(row: azdata.DbCellValue[], table: DatabaseTable): ImportedModel {
-		return {
-			id: +row[0].displayValue,
-			modelName: row[1].displayValue,
-			description: row[2].displayValue,
-			version: row[3].displayValue,
-			created: row[4].displayValue,
-			framework: row[5].displayValue,
-			frameworkVersion: row[6].displayValue,
-			deploymentTime: row[7].displayValue,
-			deployedBy: row[8].displayValue,
-			runId: row[9].displayValue,
-			contentLength: +row[10].displayValue,
-			table: table
-		};
 	}
 
 	private async getCurrentConnection(): Promise<azdata.connection.ConnectionProfile> {

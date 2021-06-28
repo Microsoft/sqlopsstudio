@@ -19,7 +19,6 @@ import * as UUID from 'vscode-languageclient/lib/utils/uuid';
 import * as fs from 'fs';
 import { ModelConfigRecent } from '../../modelManagement/modelConfigRecent';
 import { DatabaseTable } from '../../prediction/interfaces';
-import * as queries from '../../modelManagement/queries';
 
 interface TestContext {
 
@@ -42,7 +41,7 @@ function createContext(): TestContext {
 		importTable: {
 			databaseName: 'db',
 			tableName: 'tb',
-			schema: 'dbo'
+			schemaName: 'dbo'
 		}
 	};
 }
@@ -54,16 +53,17 @@ describe('DeployedModelService', () => {
 		let importTable: DatabaseTable = {
 			databaseName: 'db',
 			tableName: 'tb',
-			schema: 'dbo'
+			schemaName: 'dbo'
 		};
 
 		testContext.apiWrapper.setup(x => x.getCurrentConnection()).returns(() => { return Promise.resolve(connection); });
 		let service = new DeployedModelService(
 			testContext.apiWrapper.object,
 			testContext.config.object,
-			testContext.queryRunner.object,
+
 			testContext.modelClient.object,
-			testContext.recentModels.object);
+			testContext.recentModels.object,
+			undefined!);
 		await should(service.getDeployedModels(importTable)).rejected();
 	});
 
@@ -154,9 +154,9 @@ describe('DeployedModelService', () => {
 		let service = new DeployedModelService(
 			testContext.apiWrapper.object,
 			testContext.config.object,
-			testContext.queryRunner.object,
 			testContext.modelClient.object,
-			testContext.recentModels.object);
+			testContext.recentModels.object,
+			undefined!);
 		testContext.queryRunner.setup(x => x.safeRunQuery(TypeMoq.It.isAny(), TypeMoq.It.isAny())).returns(() => Promise.resolve(result));
 		const actual = await service.getDeployedModels(testContext.importTable);
 		should.deepEqual(actual, expected);
@@ -186,9 +186,9 @@ describe('DeployedModelService', () => {
 		let service = new DeployedModelService(
 			testContext.apiWrapper.object,
 			testContext.config.object,
-			testContext.queryRunner.object,
 			testContext.modelClient.object,
-			testContext.recentModels.object);
+			testContext.recentModels.object,
+			undefined!);
 		const actual = await service.loadModelParameters('');
 		should.deepEqual(actual, expected);
 	});
@@ -229,9 +229,9 @@ describe('DeployedModelService', () => {
 		let service = new DeployedModelService(
 			testContext.apiWrapper.object,
 			testContext.config.object,
-			testContext.queryRunner.object,
 			testContext.modelClient.object,
-			testContext.recentModels.object);
+			testContext.recentModels.object,
+			undefined!);
 		testContext.queryRunner.setup(x => x.safeRunQuery(TypeMoq.It.isAny(), TypeMoq.It.isAny())).returns(() => Promise.resolve(result));
 
 		testContext.config.setup(x => x.registeredModelDatabaseName).returns(() => 'db');
@@ -332,9 +332,9 @@ describe('DeployedModelService', () => {
 		let service = new DeployedModelService(
 			testContext.apiWrapper.object,
 			testContext.config.object,
-			testContext.queryRunner.object,
 			testContext.modelClient.object,
-			testContext.recentModels.object);
+			testContext.recentModels.object,
+			undefined!);
 
 		testContext.queryRunner.setup(x => x.runWithDatabaseChange(TypeMoq.It.isAny(), TypeMoq.It.is(x => x.indexOf('INSERT INTO') > 0), TypeMoq.It.isAny())).returns(() => {
 			deployed = true;
@@ -357,113 +357,5 @@ describe('DeployedModelService', () => {
 		finally {
 			await utils.deleteFile(tempFilePath);
 		}
-	});
-
-	it('getConfigureQuery should escape db name', async function (): Promise<void> {
-		const testContext = createContext();
-
-		testContext.importTable.databaseName = 'd[]b';
-		testContext.importTable.tableName = 'ta[b]le';
-		testContext.importTable.schema = 'dbo';
-		const expected = `
-		IF NOT EXISTS
-			(  SELECT t.name, s.name
-				FROM sys.tables t join sys.schemas s on t.schema_id=t.schema_id
-				WHERE t.name = 'ta[b]le'
-				AND s.name = 'dbo'
-			)
-		BEGIN
-		CREATE TABLE [dbo].[ta[[b]]le](
-			[model_id] [int] IDENTITY(1,1) NOT NULL,
-			[model_name] [varchar](256) NOT NULL,
-			[model_framework] [varchar](256) NULL,
-			[model_framework_version] [varchar](256) NULL,
-			[model] [varbinary](max) NOT NULL,
-			[model_version] [varchar](256) NULL,
-			[model_creation_time] [datetime2] NULL,
-			[model_deployment_time] [datetime2] NULL,
-			[deployed_by] [int] NULL,
-			[model_description] [varchar](256) NULL,
-			[run_id] [varchar](256) NULL,
-		CONSTRAINT [ta[[b]]le_models_pk] PRIMARY KEY CLUSTERED
-		(
-			[model_id] ASC
-		)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
-		) ON [PRIMARY] TEXTIMAGE_ON [PRIMARY]
-		ALTER TABLE [dbo].[ta[[b]]le] ADD  CONSTRAINT [ta[[b]]le_deployment_time]  DEFAULT (getdate()) FOR [model_deployment_time]
-		END
-	`;
-		const actual = queries.getConfigureTableQuery(testContext.importTable);
-		should.equal(actual.indexOf(expected) >= 0, true, `actual: ${actual} \n expected: ${expected}`);
-	});
-
-	it('getDeployedModelsQuery should escape db name', async function (): Promise<void> {
-		const testContext = createContext();
-		testContext.importTable.databaseName = 'd[]b';
-		testContext.importTable.tableName = 'ta[b]le';
-		testContext.importTable.schema = 'dbo';
-		const expected = `
-		SELECT model_id, model_name, model_description, model_version, model_creation_time, model_framework, model_framework_version, model_deployment_time, deployed_by, run_id, len(model)
-		FROM [d[[]]b].[dbo].[ta[[b]]le]
-		WHERE model_name not like 'MLmodel' and model_name not like 'conda.yaml'
-		ORDER BY model_id
-		`;
-		const actual = queries.getDeployedModelsQuery(testContext.importTable);
-		should.deepEqual(expected, actual);
-	});
-
-	it('getInsertModelQuery should escape db name', async function (): Promise<void> {
-		const testContext = createContext();
-		const model: ImportedModel =
-		{
-			id: 1,
-			modelName: 'name1',
-			description: 'desc1',
-			created: '2018-01-01',
-			version: '1.1',
-			table: testContext.importTable
-		};
-
-		const expected = `INSERT INTO [dbo].[tb]
-		(model_name, model, model_version, model_description, model_creation_time, model_framework, model_framework_version, run_id)
-		VALUES (
-			'name1',
-			,
-			'1.1',
-			'desc1',
-			'2018-01-01',
-			'',
-			'',
-			'')`;
-		const actual = queries.getInsertModelQuery(model, testContext.importTable);
-		should.equal(actual.indexOf(expected) >= 0, true, `actual: ${actual} \n expected: ${expected}`);
-	});
-
-	it('getModelContentQuery should escape db name', async function (): Promise<void> {
-		const testContext = createContext();
-		const model: ImportedModel =
-		{
-			id: 1,
-			modelName: 'name1',
-			description: 'desc1',
-			created: '2018-01-01',
-			version: '1.1',
-			table: testContext.importTable
-		};
-
-		model.table = {
-			databaseName: 'd[]b', tableName: 'ta[b]le', schema: 'dbo'
-		};
-		const expected = `
-		DECLARE @str varbinary(max)
-
-		SELECT @str=model
-		FROM [d[[]]b].[dbo].[ta[[b]]le]
-		WHERE model_id = 1;
-
-		select substring(@str, 0, 1001) as d0
-		`;
-		const actual = queries.getModelContentQuery(model);
-		should.deepEqual(actual, expected, `actual: ${actual} \n expected: ${expected}`);
 	});
 });
