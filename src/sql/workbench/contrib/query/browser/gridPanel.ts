@@ -325,6 +325,7 @@ export interface IDataSet {
 
 export interface IGridTableOptions {
 	actionOrientation: ActionsOrientation;
+	displayActions?: boolean;
 	inMemoryDataProcessing: boolean;
 	inMemoryDataCountThreshold?: number;
 }
@@ -376,6 +377,7 @@ export abstract class GridTableBase<T> extends Disposable implements IView {
 		state: GridTableState,
 		protected _resultSet: ResultSetSummary,
 		private readonly options: IGridTableOptions = {
+			displayActions: true,
 			inMemoryDataProcessing: false,
 			actionOrientation: ActionsOrientation.VERTICAL
 		},
@@ -558,7 +560,6 @@ export abstract class GridTableBase<T> extends Disposable implements IView {
 		this.selectionModel.onSelectedRangesChanged.subscribe(e => {
 			this.actionBar.context = this.generateContext();
 		});
-		this.rebuildActionBar();
 
 		this.selectionModel.onSelectedRangesChanged.subscribe(async e => {
 			if (this.state) {
@@ -733,10 +734,22 @@ export abstract class GridTableBase<T> extends Disposable implements IView {
 		};
 	}
 
-	private rebuildActionBar() {
+	public rebuildActionBar() {
 		let actions = this.getCurrentActions();
 		this.actionBar.clear();
-		this.actionBar.push(actions, { icon: true, label: false });
+		if (this.options.displayActions ?? true) {
+			this.actionBar.push(actions, { icon: true, label: false });
+		}
+	}
+
+	public displayActionBar() {
+		this.options.displayActions = true;
+		this.rebuildActionBar();
+	}
+
+	public hideActionBar() {
+		this.options.displayActions = false;
+		this.rebuildActionBar();
 	}
 
 	protected abstract getCurrentActions(): IAction[];

@@ -4,7 +4,6 @@
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 -->
-<!-- Notebook View -->
-<notebook-component *ngIf="viewMode === 0" [_views]="views" [_model]="model"></notebook-component>
-<!-- Dashboard View -->
-<notebook-view-component *ngIf="viewMode === 1" [views]="views" [notebookMeta]="views.metadata" [activeView]="activeView" [model]="model"></notebook-view-component>
+<div class="overlay" style="overflow: hidden; width: 100%; height: 100%; display: flex; flex-flow: column">
+	<ng-content></ng-content>
+</div>

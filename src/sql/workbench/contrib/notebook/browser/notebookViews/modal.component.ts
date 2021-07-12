@@ -1,10 +1,21 @@
-<!--
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the Source EULA. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
--->
-<!-- Notebook View -->
-<notebook-component *ngIf="viewMode === 0" [_views]="views" [_model]="model"></notebook-component>
-<!-- Dashboard View -->
-<notebook-view-component *ngIf="viewMode === 1" [views]="views" [notebookMeta]="views.metadata" [activeView]="activeView" [model]="model"></notebook-view-component>
+
+import { Component, Input } from '@angular/core';
+
+@Component({
+	selector: 'views-modal-component',
+	template: `
+		<div [class.modal]="modal">
+			<div class="content">
+				<div class="title">{{title}}</div>
+				<ng-content></ng-content>
+			</div>
+		</div>
+	`
+})
+export class ModalComponent {
+	@Input() title: boolean;
+}

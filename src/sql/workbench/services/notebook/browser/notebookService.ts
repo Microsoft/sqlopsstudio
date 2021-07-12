@@ -17,6 +17,7 @@ import { NotebookChangeType, CellType } from 'sql/workbench/services/notebook/co
 import { IBootstrapParams } from 'sql/workbench/services/bootstrap/common/bootstrapParams';
 import { BaseTextEditor } from 'vs/workbench/browser/parts/editor/textEditor';
 import { Range } from 'vs/editor/common/core/range';
+import { NotebookViewsExtension } from 'sql/workbench/services/notebook/browser/notebookViews/notebookViewsExtension';
 import { IEditorPane } from 'vs/workbench/common/editor';
 import { INotebookInput } from 'sql/workbench/services/notebook/browser/interface';
 import { INotebookShowOptions } from 'sql/workbench/api/common/sqlExtHost.protocol';
@@ -210,6 +211,7 @@ export interface INotebookEditor {
 	readonly cellEditors: ICellEditorProvider[];
 	readonly modelReady: Promise<INotebookModel>;
 	readonly model: INotebookModel | null;
+	readonly views: NotebookViewsExtension | null;
 	isDirty(): boolean;
 	isActive(): boolean;
 	isVisible(): boolean;

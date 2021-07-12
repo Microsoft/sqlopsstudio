@@ -11,23 +11,32 @@ import { generateUuid } from 'vs/base/common/uuid';
 
 export const DEFAULT_VIEW_CARD_HEIGHT = 4;
 export const DEFAULT_VIEW_CARD_WIDTH = 12;
+export const GRID_COLUMNS = 12;
 
 export class ViewNameTakenError extends Error { }
 
 export class NotebookViewModel implements INotebookView {
 	private _onDeleted = new Emitter<INotebookView>();
+	private _isNew: boolean = false;
 
 	public readonly guid: string;
 	public readonly onDeleted = this._onDeleted.event;
 
 	constructor(
 		protected _name: string,
-		private _notebookViews: NotebookViewsExtension
+		private _notebookViews: NotebookViewsExtension,
+		guid?: string
 	) {
-		this.guid = generateUuid();
+		this.guid = guid ?? generateUuid();
+	}
+
+	public static load(guid: string, notebookViews: NotebookViewsExtension): INotebookView {
+		const view = notebookViews.getViews().find(v => v.guid === guid);
+		return new NotebookViewModel(view.name, notebookViews, view.guid);
 	}
 
 	public initialize(): void {
+		this._isNew = true;
 		const cells = this._notebookViews.notebook.cells;
 		cells.forEach((cell, idx) => { this.initializeCell(cell, idx); });
 	}
@@ -45,6 +54,8 @@ export class NotebookViewModel implements INotebookView {
 			hidden: false,
 			y: idx * DEFAULT_VIEW_CARD_HEIGHT,
 			x: 0,
+			width: DEFAULT_VIEW_CARD_WIDTH,
+			height: DEFAULT_VIEW_CARD_HEIGHT
 		});
 	}
 
@@ -72,6 +83,10 @@ export class NotebookViewModel implements INotebookView {
 		return this.cells.filter(cell => this.getCellMetadata(cell)?.hidden);
 	}
 
+	public get displayedCells(): Readonly<ICellModel[]> {
+		return this.cells.filter(cell => !this.getCellMetadata(cell)?.hidden);
+	}
+
 	public get cells(): Readonly<ICellModel[]> {
 		return this._notebookViews.notebook.cells;
 	}
@@ -92,8 +107,50 @@ export class NotebookViewModel implements INotebookView {
 		this._notebookViews.updateCell(cell, this, { x, y });
 	}
 
-	public resizeCell(cell: ICellModel, width: number, height: number) {
-		this._notebookViews.updateCell(cell, this, { width, height });
+	public resizeCell(cell: ICellModel, width?: number, height?: number) {
+		let data: INotebookViewCell = {};
+
+		if (width) {
+			data.width = width;
+		}
+
+		if (height) {
+			data.height = height;
+		}
+
+		this._notebookViews.updateCell(cell, this, data);
+	}
+
+	public getCellSize(cell: ICellModel): any {
+		const meta = this.getCellMetadata(cell);
+		return { width: meta.width, height: meta.height };
+	}
+
+	public compactCells() {
+		let cellsPlaced: INotebookViewCell[] = [];
+
+		this.displayedCells.forEach((cell: ICellModel) => {
+			const c1 = this.getCellMetadata(cell);
+
+			for (let i = 0; ; i++) {
+				const row = i % GRID_COLUMNS;
+				const column = Math.floor(i / GRID_COLUMNS);
+
+				if (row + c1.width > GRID_COLUMNS) {
+					continue;
+				}
+
+				if (!cellsPlaced.find((c2) => this.cellCollides(c2, { ...c1, x: row, y: column }))) {
+					this._notebookViews.updateCell(cell, this, { x: row, y: column });
+					cellsPlaced.push({ ...c1, x: row, y: column });
+					break;
+				}
+			}
+		});
+	}
+
+	private cellCollides(c1: INotebookViewCell, c2: INotebookViewCell): boolean {
+		return !((c1.y + c1.height <= c2.y) || (c1.x + c1.width <= c2.x) || (c1.x + c1.width <= c2.x) || (c2.x + c2.width <= c1.x));
 	}
 
 	public save() {
@@ -103,6 +160,14 @@ export class NotebookViewModel implements INotebookView {
 	public delete() {
 		this._notebookViews.removeView(this.guid);
 		this._onDeleted.fire(this);
+	}
+
+	public get isNew(): boolean {
+		return this._isNew;
+	}
+
+	public markAsViewed() {
+		this._isNew = false;
 	}
 
 	public toJSON() {

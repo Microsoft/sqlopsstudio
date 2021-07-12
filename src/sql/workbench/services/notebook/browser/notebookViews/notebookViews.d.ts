@@ -6,28 +6,42 @@
 import { ICellModel } from 'sql/workbench/services/notebook/browser/models/modelInterfaces';
 import { Event } from 'vs/base/common/event';
 
-export type CellChangeEventType = 'hide' | 'insert' | 'active';
+export type CellChangeEventType = 'hide' | 'insert' | 'active' | 'execution' | 'update';
 
 export type CellChangeEvent = {
 	cell: ICellModel,
 	event: CellChangeEventType
 };
 
+export interface INotebookViews {
+	onActiveViewChanged: Event<void>;
+	createNewView(name?: string): INotebookView;
+	removeView(guid: string): void;
+	getActiveView(): INotebookView;
+	setActiveView(view: INotebookView);
+	viewNameIsTaken(name: string): boolean;
+	metadata: INotebookViewMetadata;
+}
+
 export interface INotebookView {
 	readonly guid: string;
 	readonly onDeleted: Event<INotebookView>;
+	isNew: boolean;
 
 	cells: Readonly<ICellModel[]>;
 	hiddenCells: Readonly<ICellModel[]>;
+	displayedCells: Readonly<ICellModel[]>;
 	name: string;
 	initialize(): void;
 	nameAvailable(name: string): boolean;
 	getCellMetadata(cell: ICellModel): INotebookViewCell;
 	hideCell(cell: ICellModel): void;
 	moveCell(cell: ICellModel, x: number, y: number): void;
+	compactCells();
 	resizeCell(cell: ICellModel, width: number, height: number): void;
 	getCell(guid: string): Readonly<ICellModel>;
 	insertCell(cell: ICellModel): void;
+	markAsViewed(): void;
 	save(): void;
 	delete(): void;
 }
